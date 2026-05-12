@@ -1,0 +1,51 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>PDF Summarizer</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}" />
+  </head>
+  <body>
+    <div class="container">
+      <section class="hero">
+        <h1>PDF Summarizer</h1>
+        <p class="lead">Upload a PDF document and get a concise summary in seconds. This app uses the same model pipeline as your Python script.</p>
+      </section>
+
+      {% with messages = get_flashed_messages() %}
+        {% if messages %}
+          <div class="message">
+            {% for message in messages %}
+              <div>{{ message }}</div>
+            {% endfor %}
+          </div>
+        {% endif %}
+      {% endwith %}
+
+      <div class="card">
+        <form method="post" action="{{ url_for('summarize') }}" enctype="multipart/form-data">
+          <label for="pdf_file">Choose a PDF file</label>
+          <div class="input-file">
+            <input type="file" name="pdf_file" id="pdf_file" accept="application/pdf" />
+            <button type="submit">Summarize PDF</button>
+          </div>
+          <p class="small-print">Max file size: 16MB. Only PDF files are accepted.</p>
+        </form>
+      </div>
+
+      {% if summary %}
+        <div class="card output">
+          <div>
+            <h2>Summary for {{ filename }}</h2>
+            <pre>{{ summary }}</pre>
+          </div>
+          <div>
+            <h3>Source Text (trimmed to 1000 chars)</h3>
+            <pre>{{ original_text }}</pre>
+          </div>
+        </div>
+      {% endif %}
+    </div>
+  </body>
+</html>
