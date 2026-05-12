@@ -7,67 +7,108 @@ import tempfile
 
 app = Flask(__name__)
 app.secret_key = "change-this-secret"
-app.config["MAX_CONTENT_LENGTH"] = 16 * 1024 * 1024  # 16 MB upload limit
+
+# Maximum upload size = 16 MB
+app.config["MAX_CONTENT_LENGTH"] = 16 * 1024 * 1024
+
+# Allowed file types
 app.config["UPLOAD_EXTENSIONS"] = [".pdf"]
 
-# Load text generation model once at startup
+# Load summarization model
 generator = pipeline(
-    "text-generation",
-    model="gpt2",
+    "summarization",
+    model="facebook/bart-large-cnn"
 )
 
 
-def extract_text_from_pdf(pdf_path: str) -> str:
+# Extract text from uploaded PDF
+def extract_text_from_pdf(pdf_path):
     text = ""
+
     with pdfplumber.open(pdf_path) as pdf:
         for page in pdf.pages:
             extracted = page.extract_text()
+
             if extracted:
-                text += extracted
+                text += extracted + "\n"
+
     return text
 
 
+# Home page
 @app.route("/", methods=["GET"])
 def index():
     return render_template("index.html")
 
 
+# Summarize PDF
 @app.route("/summarize", methods=["POST"])
 def summarize():
+
     uploaded_file = request.files.get("pdf_file")
+
+    # Check if file uploaded
     if not uploaded_file or uploaded_file.filename == "":
-        flash("Please choose a PDF file to upload.")
+        flash("Please upload a PDF file.")
         return redirect(url_for("index"))
 
+    # Secure filename
     filename = secure_filename(uploaded_file.filename)
+
+    # Check extension
     file_ext = os.path.splitext(filename)[1].lower()
+
     if file_ext not in app.config["UPLOAD_EXTENSIONS"]:
-        flash("Invalid file type. Please upload a PDF document.")
+        flash("Only PDF files are allowed.")
         return redirect(url_for("index"))
 
+    # Save temporarily
     with tempfile.NamedTemporaryFile(delete=False, suffix=file_ext) as tmp:
         uploaded_file.save(tmp.name)
+
+        # Extract text
         pdf_text = extract_text_from_pdf(tmp.name)
 
+    # Delete temp file
     os.unlink(tmp.name)
 
+    # Empty PDF check
     if not pdf_text.strip():
-        flash("The uploaded PDF did not contain extractable text.")
+        flash("No readable text found in the PDF.")
         return redirect(url_for("index"))
 
-    pdf_text = pdf_text[:1000]
-    prompt = f"Summarize this text:\n{pdf_text}"
+    # Limit text size for model
+    pdf_text = pdf_text[:2000]
 
-    result = generator(prompt, max_new_tokens=100, do_sample=False)
-    summary = result[0]["generated_text"]
+    try:
+        # Generate summary
+        result = generator(
+            pdf_text,
+            max_length=120,
+            min_length=40,
+            do_sample=False
+        )
+
+        summary = result[0]["summary_text"]
+
+    except Exception as e:
+        flash(f"Error while generating summary: {str(e)}")
+        return redirect(url_for("index"))
 
     return render_template(
         "index.html",
         summary=summary,
         original_text=pdf_text,
-        filename=filename,
+        filename=filename
     )
 
 
+# Run Flask app
 if __name__ == "__main__":
-    app.run(debug=True, host="0.0.0.0", port=5000)
+
+    port = int(os.environ.get("PORT", 5000))
+
+    app.run(
+        host="0.0.0.0",
+        port=port
+    )
