@@ -3,12 +3,16 @@ from werkzeug.utils import secure_filename
 import pdfplumber
 import os
 import tempfile
+import nltk
+
 from sumy.parsers.plaintext import PlaintextParser
 from sumy.nlp.tokenizers import Tokenizer
 from sumy.summarizers.lsa import LsaSummarizer
 
+nltk.download('punkt')
+
 app = Flask(__name__)
-app.secret_key = "change-this-secret"
+app.secret_key = "secret-key"
 
 app.config["MAX_CONTENT_LENGTH"] = 16 * 1024 * 1024
 app.config["UPLOAD_EXTENSIONS"] = [".pdf"]
@@ -28,7 +32,7 @@ def extract_text_from_pdf(pdf_path):
 
 
 @app.route("/")
-def index():
+def home():
     return render_template("index.html")
 
 
@@ -37,19 +41,13 @@ def summarize():
 
     uploaded_file = request.files.get("pdf_file")
 
-    if not uploaded_file or uploaded_file.filename == "":
+    if not uploaded_file:
         flash("Please upload a PDF file.")
-        return redirect(url_for("index"))
+        return redirect(url_for("home"))
 
     filename = secure_filename(uploaded_file.filename)
 
-    file_ext = os.path.splitext(filename)[1].lower()
-
-    if file_ext not in app.config["UPLOAD_EXTENSIONS"]:
-        flash("Only PDF files are allowed.")
-        return redirect(url_for("index"))
-
-    with tempfile.NamedTemporaryFile(delete=False, suffix=file_ext) as tmp:
+    with tempfile.NamedTemporaryFile(delete=False, suffix=".pdf") as tmp:
         uploaded_file.save(tmp.name)
 
         pdf_text = extract_text_from_pdf(tmp.name)
@@ -57,12 +55,16 @@ def summarize():
     os.unlink(tmp.name)
 
     if not pdf_text.strip():
-        flash("No readable text found in the PDF.")
-        return redirect(url_for("index"))
+        flash("No readable text found.")
+        return redirect(url_for("home"))
 
     pdf_text = pdf_text[:5000]
 
-    parser = PlaintextParser.from_string(pdf_text, Tokenizer("english"))
+    parser = PlaintextParser.from_string(
+        pdf_text,
+        Tokenizer("english")
+    )
+
     summarizer = LsaSummarizer()
 
     summary_sentences = summarizer(parser.document, 3)
@@ -77,10 +79,4 @@ def summarize():
     )
 
 
-if __name__ == "__main__":
-    port = int(os.environ.get("PORT", 5000))
-
-    app.run(
-        host="0.0.0.0",
-        port=port
-    )
+app = app
